@@ -6,6 +6,7 @@ Radio Astronomy Session 03 Scripts
 """
 
 # imports
+from collections.abc import Callable
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -25,7 +26,6 @@ PATH_RAW = DIR_DATA / "session_03_data_raw"
 PATH_FFT = DIR_DATA / "session_03_data_fft"
 PATH_INT = DIR_DATA / "session_03_data_fft_int"
 
-PATH_FIG = DIR_FIG / "session_03.pdf"
 PATH_FIG_SPECTRUM = DIR_FIG / "session_03_spectrum.pdf"
 PATH_FIG_WATERFALL = DIR_FIG / "session_03_waterfall.pdf"
 
@@ -37,46 +37,78 @@ SAMP_SPACING = 1 / SAMP_RATE
 FFT_SIZE = 2048  # N
 ERR = 1e-32
 
-# data loader
+
+# helpers
 
 
-def load_spectrum(path):
-    """read bin data from path and return freq, amp"""
+def _data_loader(
+    func: Callable, path: Path, path_default: Path, dtype: np.dtype
+) -> np.ndarray:
+    """load data and check for validity, then rehsape by (-1, FFT_SIZE)"""
+    # path reminder
+    if path != path_default:
+        raise ValueError(
+            f"{func.__name__} - Non-default path used - {path}, check data dtype."
+        )
 
-    # read data_fft_int from bin
-    data = np.fromfile(path, dtype=np.float32)
+    # load data
+    data = np.fromfile(path, dtype=dtype)
+
+    # data validation
+    if data.size == 0:
+        raise ValueError(f"{func.__name__} - File is empty - {path}")
+    if data.size % FFT_SIZE != 0:
+        raise ValueError(f"{func.__name__} - File may be corrupt - {path}")
+
     # reshape
-    # data.shape should now be (fft_size, xxx)
     data = data.reshape(-1, FFT_SIZE)
-    # average into (fft_size, )
-    amp = np.nanmean(data, axis=0)
 
+    return data
+
+
+def _shift_freq(
+    fft_size: int = FFT_SIZE, samp_spacing: float = SAMP_SPACING
+) -> np.ndarray:
+    """simple helper - build and shift freq array"""
     # center around central freq at Hz
     base = np.fft.fftfreq(FFT_SIZE, d=SAMP_SPACING)
     freq = CENTRAL_FREQ + np.fft.fftshift(base)
 
-    return freq, amp
+    return freq
 
 
-def load_waterfall(path):
+# loader
+
+
+def load_spectrum(path: Path = PATH_INT) -> tuple[np.ndarray, np.ndarray]:
+    """read bin data from path and return freq, power"""
+
+    # read data_fft_int from bin
+    data = _data_loader(load_spectrum, path, PATH_INT, np.dtype(np.float32))
+
+    # average into (fft_size, )
+    power = np.nanmean(data, axis=0)
+
+    # center around central freq at Hz
+    freq = _shift_freq(FFT_SIZE, SAMP_SPACING)
+
+    return freq, power
+
+
+def load_waterfall(path: Path = PATH_FFT) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """read bin data from path and return freq, time, and gain"""
-
-    # read data_fft from bin
-    data = np.fromfile(path, dtype=np.complex64)
-    # reshape
-    data = data.reshape(-1, FFT_SIZE)
+    data = _data_loader(load_waterfall, path, PATH_FFT, np.dtype(np.complex64))
 
     # get complex to mag**2
-    gain = np.abs(data) ** 2
+    power = np.abs(data) ** 2
     # cast to db at log10 with small ERR for numerical stability
-    gain = 10 * np.log10(gain + ERR)
+    gain = 10 * np.log10(power + ERR)
 
-    # convert to s
+    # convert time to s
     time = np.arange(len(data)) * FFT_SIZE * SAMP_SPACING
 
     # center around central freq at Hz
-    base = np.fft.fftfreq(FFT_SIZE, d=SAMP_SPACING)
-    freq = CENTRAL_FREQ + np.fft.fftshift(base)
+    freq = _shift_freq(FFT_SIZE, SAMP_SPACING)
 
     return freq, time, gain
 
@@ -84,23 +116,46 @@ def load_waterfall(path):
 # plt - main
 
 
-def plot_spectrum(freq, amp, path) -> None:
+def plot_spectrum(freq: np.ndarray, power: np.ndarray, path: Path) -> None:
     """spectrum plot"""
+
     # fig
     fig, ax = plt.subplots()
-    ax.plot(freq, amp)
-    ax.set_xlabel("Frequency (Hz)")
-    ax.set_ylabel("Amplitude")
+    ax.plot(freq, power)
 
+    # overlay central freq
+    ax.axvline(
+        CENTRAL_FREQ,
+        linestyle=":",
+        linewidth="0.8",
+        color="r",
+        alpha=0.6,
+        label="Central Frequency",
+    )
+
+    # plt cfg
+    ax.set_xlabel("Frequency (Hz)")
+    ax.set_ylabel("Power")
+    ax.legend(
+        loc="upper left", fontsize=8, frameon=True, edgecolor="black", fancybox=True
+    )
+    # save
     fig.tight_layout()
     fig.savefig(path, dpi=300, format="pdf")
     plt.close(fig)
 
 
-def plot_waterfall(freq, time, gain, path) -> None:
+def plot_waterfall(
+    freq: np.ndarray, time: np.ndarray, gain: np.ndarray, path: Path
+) -> None:
     """waterfall plot"""
     # local repo
-    extent = (float(time[0]), float(time[-1]), float(freq[0]), float(freq[-1]))
+    extent = (
+        float(time[0]),
+        float(time[-1]),
+        float(freq[0]),
+        float(freq[-1]),
+    )
     vmin, vmax = np.percentile(gain, [5, 99.99])
 
     # fig
@@ -114,16 +169,18 @@ def plot_waterfall(freq, time, gain, path) -> None:
         vmin=vmin,
         vmax=vmax,
     )
+
+    # plt cfg
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Freqency (Hz)")
     fig.colorbar(im, ax=ax, label="Relative Gain (dB)")
-
+    # save
     fig.tight_layout()
     fig.savefig(path, dpi=300, format="pdf")
     plt.close(fig)
 
 
-def main():
+def main() -> None:
     """wrapper for main call"""
 
     print("SESSION03")

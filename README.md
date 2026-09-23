@@ -107,3 +107,15 @@ echo "radio-astronomy-by-notebooks/" >> .gitignore
 ├── README.md
 └── scripts
 ```
+
+## example
+
+For example, to run the script for session 03 with some data saved at `./data`, do the following in your terminal:
+
+```sh
+cd strw-ra-scripts
+conda activate strw-ra-py314
+python ./scripts/session_03.py
+```
+
+The generated figures are then saved to `./fig`.
