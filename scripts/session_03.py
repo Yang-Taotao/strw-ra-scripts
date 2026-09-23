@@ -31,7 +31,7 @@ PATH_FIG_WATERFALL = DIR_FIG / "session_03_waterfall.pdf"
 
 # local const
 SAMP_RATE = 1e7  # 10 MHz
-CENTRAL_FREQ = 1.42e9  # 1.42 GHz
+CENTRAL_FREQ = 1.418e9  # 1.42 GHz
 TGT_SAMP_FREQ = 2.84e9  # 2.84 GHz
 SAMP_SPACING = 1 / SAMP_RATE
 FFT_SIZE = 2048  # N
